@@ -24,6 +24,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
+import android.widget.GridView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
@@ -254,7 +255,9 @@ public class LexiconActivity extends AppCompatActivity {
 
             //set up layout view for the first tab: Lexicon
            if(placeHolerId == 1){
-               //HOME FRAGMENT
+               rootView = inflater.inflate(R.layout.home_layout, container, false);
+               GridView gridView = rootView.findViewById(R.id.gridview);
+               gridView.setAdapter(new GridViewAdapter(rootView.getContext()));
             }//if Ends
 
             //setup layout view for the third tab: Favorite tab
