@@ -10,6 +10,7 @@ import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 
 /************************************************************
  * Created by asohm on 10/29/2017.
@@ -23,14 +24,14 @@ import java.util.HashMap;
 public class FavoriteViewAdapter extends RecycleViewAdapter {
 
 
-      private static ArrayList<Lexicon>  mList;
-      private static FavoriteViewAdapter favoriteViewAdapter;
-      private Context mContext;
+    private static LinkedList<Lexicon>  mList;
+    private static FavoriteViewAdapter favoriteViewAdapter;
+    private Context mContext;
     /************************************************
      *
      * @param list
      */
-    private FavoriteViewAdapter(Context context, ArrayList<Lexicon> list) {
+    private FavoriteViewAdapter(Context context, LinkedList<Lexicon> list) {
         super(context);
         this.mList = list;
         this.mContext = context;
@@ -38,7 +39,7 @@ public class FavoriteViewAdapter extends RecycleViewAdapter {
     }//FavoriteViewAdapter(ArrayList, String) Ends
 
 
-    public  static  FavoriteViewAdapter getInstance( Context mContext, ArrayList list){
+    public  static  FavoriteViewAdapter getInstance( Context mContext, LinkedList list){
         if(favoriteViewAdapter != null){
             return favoriteViewAdapter;
         }// if Ends
@@ -48,7 +49,7 @@ public class FavoriteViewAdapter extends RecycleViewAdapter {
     }//FavoriteViewAdapter() Ends
 
     public  static  FavoriteViewAdapter getInstance(){
-            return favoriteViewAdapter;
+        return favoriteViewAdapter;
 
     }//FavoriteViewAdapter() Ends
 
@@ -101,7 +102,8 @@ public class FavoriteViewAdapter extends RecycleViewAdapter {
      *
      */
     public void updateResource(){
-        mList = DataSource.getInstance(mContext).getFavLexicon();
+        mList.clear();
+        mList.addAll(DataSource.getInstance(mContext).getFavLexicon());
         notifyDataSetChanged();
     }//addItem Ends
 

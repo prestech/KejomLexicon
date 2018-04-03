@@ -29,6 +29,7 @@ import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 
 /***
  * TODO: ADD "CATEGORIES" COLUMN TO VIEW
@@ -50,7 +51,10 @@ public class LexiconActivity extends AppCompatActivity {
      * {@link android.support.v4.app.FragmentStatePagerAdapter}.
      */
     private SectionsPagerAdapter mSectionsPagerAdapter;
-
+    private static DataSource dataSource = null;
+    private static LinkedList<Lexicon> lexiconList = new LinkedList<>();
+    private static LinkedList<Lexicon> favLexiconList = new LinkedList<>();
+    private static SearchView searchView = null;
     /**
      * The {@link ViewPager} that will host the section contents.
      */
@@ -69,8 +73,9 @@ public class LexiconActivity extends AppCompatActivity {
        // if(){
         setContentView(R.layout.activity_lexicon);
 
-        //Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
-        //setSupportActionBar(toolbar);
+        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+
         // Create the adapter that will return a fragment for each of the three
         // primary sections of the activity.
         mSectionsPagerAdapter = new SectionsPagerAdapter(getSupportFragmentManager());
@@ -81,11 +86,16 @@ public class LexiconActivity extends AppCompatActivity {
 
         TabLayout tabLayout = (TabLayout) findViewById(R.id.tabs);
         tabLayout.setupWithViewPager(mViewPager);
+        dataSource = DataSource.getInstance(this);
 
+        if(dataSource != null) {
+            //get Database instance
+            dataSource.transferFileDataToSqlite();
+        }else{
+            dataSource = DataSource.getInstance(this);
+            dataSource.transferFileDataToSqlite();
+        }//else if Ends
 
-
-        //get Database instance
-        DataSource.getInstance(this).transferFileDataToSqlite();
 
         //set up the activity toolbar
         toolbar = (Toolbar)findViewById(R.id.main_toolbar);
@@ -93,12 +103,11 @@ public class LexiconActivity extends AppCompatActivity {
 
 
         /*********************************************************************************
-         *
+         * This is a callback function which is called when the Viewer page change
          */
         mViewPager.addOnPageChangeListener(new ViewPager.OnPageChangeListener() {
             @Override
             public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
-
 
             }//onPageScrolled() Ends
 
@@ -114,7 +123,8 @@ public class LexiconActivity extends AppCompatActivity {
             @Override
             public void onPageScrollStateChanged(int state) {
 
-            }
+            }//onPageScrollStateChanged() Ends
+
         });//addOnPageChangeListener() Ends
 
 
@@ -123,8 +133,8 @@ public class LexiconActivity extends AppCompatActivity {
 
 
 
-    /****************************************************
-     * This is a call back function to create this activity's
+    /******************************************************************************
+     * onCreateOptionsMenu(): This is a call back function to create this activity's
      * menu
      * @param menu
      * @return
@@ -134,42 +144,51 @@ public class LexiconActivity extends AppCompatActivity {
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.menu_lexicon, menu);
 
+        if(dataSource == null) dataSource  = DataSource.getInstance(getApplicationContext());
+
         //Set up searchable configuration
         SearchManager searchManager =  (SearchManager) getSystemService(Context.SEARCH_SERVICE);
-        final SearchView searchView = (SearchView) menu.findItem(R.id.search).getActionView();
+        searchView = (SearchView) menu.findItem(R.id.search).getActionView();
 
+        //implement setOnQueryTextListener(): This call back is called when the user press the search button
         searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
             @Override
             public boolean onQueryTextSubmit(String query) {
 
                 LexiconViewAdapter lexiconViewAdapter = LexiconViewAdapter.getInstance();
                 if(lexiconViewAdapter != null){
-                    lexiconViewAdapter.updateResource(DataSource.getInstance(getApplicationContext()).queryAll(query));
+                    lexiconViewAdapter.updateResource(dataSource.queryAll(query));
                 }//if Ends
 
                 searchView.clearFocus();
-
                 return false;
-            }
+
+            }//onQueryTextSubmit() Ends
 
             @Override
             public boolean onQueryTextChange(String newText) {
                 return false;
             }
-        });
+        });//setOnQueryTextListener() Ends
 
+        //set the onCloseListener for the search box
         searchView.setOnCloseListener(new SearchView.OnCloseListener() {
             @Override
             public boolean onClose() {
+
                 LexiconViewAdapter lexiconViewAdapter = LexiconViewAdapter.getInstance();
                 if(lexiconViewAdapter != null){
-                    lexiconViewAdapter.updateResource(DataSource.getInstance(getApplicationContext()).getLexicons());
+                    lexiconList.clear(); //remove all old content
+                    dataSource.clearDataSource(); //clear the datasource content
+                    lexiconList.addAll(dataSource.queryAll(0, 20)); //query the first 20 lexicon
+                    lexiconViewAdapter.updateResource(lexiconList); //update the data fragment
                 }//if Ends
-                return false;
-            }
-        });
-        searchView.setSearchableInfo(searchManager.getSearchableInfo(getComponentName()));
 
+                return false;
+            }//onclose() Ends
+        });//setOnCloseListener() Ends
+
+        searchView.setSearchableInfo(searchManager.getSearchableInfo(getComponentName()));
         return true;
 
     }//onCreateOptionsMenu() Ends
@@ -207,8 +226,6 @@ public class LexiconActivity extends AppCompatActivity {
          * fragment.
          */
         private static final String ARG_SECTION_NUMBER = "section_number";
-        private static ArrayList<Lexicon> lexiconList = null;
-        private static ArrayList<Lexicon> favLexiconList = null;
         private  RecycleViewAdapter mFavoriteViewAdapter = null;
         private LexiconViewAdapter mLexiconViewAdapter = null;
 
@@ -232,7 +249,7 @@ public class LexiconActivity extends AppCompatActivity {
             fragment.setArguments(args);
 
             return fragment;
-        }//newInstance() Ends 
+        }//newInstance() Ends
 
 
         /************************************************************************
@@ -246,8 +263,14 @@ public class LexiconActivity extends AppCompatActivity {
         public View onCreateView(LayoutInflater inflater, ViewGroup container,
                                  Bundle savedInstanceState) {
 
+            if(dataSource == null) dataSource  = DataSource.getInstance(getActivity());
+
             int placeHolerId  = getArguments().getInt(ARG_SECTION_NUMBER);
-            lexiconList = DataSource.getInstance(getActivity()).getLexicons();
+
+            //Load first set of lexicons from datasource and clear Datasource data from memory
+            lexiconList.clear();
+            dataSource.clearDataSource();
+            //lexiconList.addAll(dataSource.queryAll(0, 20));
 
             //set up layout view for the second tab: Lexicon
              rootView = inflater.inflate(R.layout.fragment_main, container, false);
@@ -255,14 +278,15 @@ public class LexiconActivity extends AppCompatActivity {
 
             //set up layout view for the first tab: Lexicon
            if(placeHolerId == 1){
-               rootView = inflater.inflate(R.layout.home_layout, container, false);
-               GridView gridView = rootView.findViewById(R.id.gridview);
-               gridView.setAdapter(new GridViewAdapter(rootView.getContext()));
+               //if(searchView != null) searchView.setVisibility(View.GONE);
+
+               rootView = inflater.inflate(R.layout.home_fragment, container, false);
             }//if Ends
 
             //setup layout view for the third tab: Favorite tab
             else if(placeHolerId == 2){
-
+              // if(searchView != null) searchView.setVisibility(View.VISIBLE);
+               Log.i("FRAGMENT_LIFE", "View created");
                // reference to root  fragment_lexicon view
                rootView = inflater.inflate(R.layout.fragment_lexicon, container, false);
 
@@ -275,6 +299,18 @@ public class LexiconActivity extends AppCompatActivity {
                     lexRecycleview.setAdapter(mLexiconViewAdapter);
                     lexRecycleview.setLayoutManager(new LinearLayoutManager(getActivity()));
 
+                    lexRecycleview.addOnScrollListener(new EndlessScrollListener(getActivity()) {
+
+                        @Override
+                        public void loadMoreData(boolean qDownward, int nELement) {
+                            Log.i("QUERRY_INDEX", "I updated query 1");
+                            if( dataSource.queryAll(qDownward, nELement) != null){
+                                lexiconList.addAll( dataSource.getLexicons());
+                                lexRecycleview.getAdapter().notifyDataSetChanged();
+                            }//if Ends
+                        }//loadMoreData Ends
+                    });
+
                 }//if Ends
 
             }//if Ends
@@ -283,22 +319,25 @@ public class LexiconActivity extends AppCompatActivity {
             //this is the default view
             else if(placeHolerId == 3){
 
+               //if(searchView != null) searchView.setVisibility(View.VISIBLE);
+
                // reference to root  fragment_favorite view
                rootView = inflater.inflate(R.layout.fragment_favorite, container, false);;
 
                 // reference recycle view object
                  favRecycleview = (RecyclerView)rootView.findViewById(R.id.fav_recycle_view);
 
-                favLexiconList = DataSource.getInstance(getActivity()).getFavLexicon();
-
-               if(favLexiconList != null)
-                    Log.v("FAV_RECYCLER", "Favsize:"+favLexiconList.size() );
-
+                 if(favLexiconList != null) {
+                   Log.v("FAV_RECYCLER", "Favsize:" + favLexiconList.size());
+                   favLexiconList.clear();
+                   if(dataSource.getFavLexicon() != null)
+                       favLexiconList.addAll(dataSource.getFavLexicon());
+                 }//if Ends
                 //favLexiconList
                 // setup recycle view adapter and layout manager
                 if( favRecycleview != null && favLexiconList != null) {
 
-                     mFavoriteViewAdapter =  FavoriteViewAdapter.getInstance(getActivity(), favLexiconList);
+                    mFavoriteViewAdapter =  FavoriteViewAdapter.getInstance(getActivity(), favLexiconList);
                     favRecycleview.setAdapter(mFavoriteViewAdapter);
                     favRecycleview.setLayoutManager(new LinearLayoutManager(getActivity()));
 
@@ -312,12 +351,21 @@ public class LexiconActivity extends AppCompatActivity {
         }//onCreateView() ends
 
 
-        /**************************
-         *
+        /************************************************************************************************************
+         *onResume(): This is a fragment life-cycle function that is called when the fragments within this activity
+         *             are being resumed after being paused.
          */
         @Override
         public void onResume() {
             super.onResume();
+
+            if(dataSource == null) dataSource  = DataSource.getInstance(getActivity());
+
+            //Load first set of lexicons from datasource and clear Datasource data from memory
+            dataSource.queryAll(0, 20);
+            lexiconList.clear();
+            lexiconList.addAll(dataSource.getLexicons());
+            dataSource.getLexicons().clear();
 
             int placeholder_id = getArguments().getInt(ARG_SECTION_NUMBER);
 
@@ -326,14 +374,20 @@ public class LexiconActivity extends AppCompatActivity {
                 if(favRecycleview == null) return;
                 if(rootView == null) return;
 
-                favLexiconList = DataSource.getInstance(getActivity()).getFavLexicon();
+                if(favLexiconList != null) {
+
+                    Log.v("FAV_RECYCLER", "Favsize:" + favLexiconList.size());
+
+                    if(dataSource.getFavLexicon() != null)
+                        favLexiconList.addAll(dataSource.getFavLexicon());
+                }//if Ends
 
                 favRecycleview.setLayoutManager(new LinearLayoutManager(rootView.getContext()));
                 favRecycleview.setAdapter( FavoriteViewAdapter.getInstance(getActivity(),favLexiconList ));
             }//if Ends
 
             if(placeholder_id == 2){
-
+                Log.i("FRAGMENT_LIFE", "View Resumed");
                 if(lexRecycleview == null) return;
                 if(rootView == null) return;
 
@@ -342,9 +396,73 @@ public class LexiconActivity extends AppCompatActivity {
                 if(lexiconList != null)
                     lexRecycleview.setAdapter(LexiconViewAdapter.getInstance(getActivity(),lexiconList ));
 
+                lexRecycleview.addOnScrollListener(new EndlessScrollListener(getActivity()) {
+                    @Override
+                    public void loadMoreData(boolean qDownward, int nELement ) {
+                        //lexiconList.clear();
+                        Log.i("QUERRY_INDEX", "I updated query 1");
+                        if( dataSource.queryAll(qDownward, nELement) != null){
+                            lexiconList.addAll( dataSource.getLexicons());
+                            lexRecycleview.getAdapter().notifyDataSetChanged();
+                        }//if Ends
+
+                    }//loadMoreData Ends
+
+                });//addOnScrollListener() Ends
+
+            }//if Ends
+        }//onResume Ends
+
+
+        /**********************************************************************************************
+         * onPause(): This is a fragment lifecycle function which is called when the fragments is paused
+         */
+        @Override
+        public void onPause() {
+            super.onPause();
+            int placeholder_id = getArguments().getInt(ARG_SECTION_NUMBER);
+
+           if(placeholder_id == 2){
+               Log.i("FRAGMENT_LIFE", "Lexicon Fragment pause");
+           }//if Ends
+
+        }//onPause() Ends
+
+
+        /***********************************************************************************************
+         * onStop(): This is a fragment lifecycle function which is called when the fragement is stopped
+         */
+        @Override
+        public void onStop() {
+            super.onStop();
+            int placeholder_id = getArguments().getInt(ARG_SECTION_NUMBER);
+
+            if(placeholder_id == 2){
+                Log.i("FRAGMENT_LIFE", "Lexicon Fragment stop");
+            }//if Ends
+        }//onStop() Ends
+
+        @Override
+        public void onStart() {
+            super.onStart();
+            super.onDestroyView();
+            int placeholder_id = getArguments().getInt(ARG_SECTION_NUMBER);
+            if(placeholder_id == 2){
+                Log.i("FRAGMENT_LIFE", "Lexicon Fragment view started");
             }//if Ends
         }
-    }//PlaceholderFragment() Ends
+
+        @Override
+        public void onDestroyView() {
+            super.onDestroyView();
+            int placeholder_id = getArguments().getInt(ARG_SECTION_NUMBER);
+            if(placeholder_id == 2){
+                Log.i("FRAGMENT_LIFE", "Lexicon Fragment view destroyed");
+            }//if Ends
+        }
+    }//PlaceholderFragment Class ends
+
+
 
 
     /**************************************************************************

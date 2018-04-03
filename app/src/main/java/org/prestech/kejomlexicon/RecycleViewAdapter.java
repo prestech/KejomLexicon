@@ -22,7 +22,7 @@ public abstract class RecycleViewAdapter extends RecyclerView.Adapter < RecycleV
 
     private MyViewHolder mViewHolder;
     private  Context mContext;
-
+    private  View layoutView = null;
     /************************************************
      *
      */
@@ -43,16 +43,19 @@ public abstract class RecycleViewAdapter extends RecyclerView.Adapter < RecycleV
     public RecycleViewAdapter.MyViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
 
         //inflate layout from parent
-         LayoutInflater inflater = LayoutInflater.from( parent.getContext());
+        LayoutInflater inflater = LayoutInflater.from( parent.getContext());
 
         //get view
-        View view = inflater.inflate( R.layout.list_layout, parent, false);
+        layoutView = inflater.inflate( R.layout.list_layout, parent, false);
 
-        MyViewHolder myViewHolder = new MyViewHolder(view);
+        MyViewHolder myViewHolder = new MyViewHolder(layoutView);
 
         return myViewHolder;
     }//onCreateViewHolder() Ends
 
+    public View getLayoutView() {
+        return layoutView;
+    }
 
     /************************************************************************
      *

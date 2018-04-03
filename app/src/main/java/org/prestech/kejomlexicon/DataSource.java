@@ -12,8 +12,11 @@ import android.widget.Toast;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.PublicKey;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
@@ -27,21 +30,23 @@ import java.util.logging.Logger;
  * application.
  *
  * Created by asohm on 4/23/2017.
- *
+ * 47439
  */
 public class DataSource extends SQLiteOpenHelper {
 
     // DataSource instance
     private  static DataSource dataSource;
-    private Context context;
+    private  Context context;
 
     //DBVersion
     private final static int DBVersion = 1;
     public  final static  String DB_NAME = "kejomDB";
 
+    private static int queryIndex = 0;
+
     // TODO:make this resource entry points trade safe
-    private static  ArrayList<Lexicon>  lexiconHashset = null;
-    private static  ArrayList<Lexicon> favLexiconHashset = null;
+    private static ArrayDeque<Lexicon> lexiconHashset = null;
+    private static  ArrayDeque<Lexicon> favLexiconHashset = null;
 
     //Statement to create lexicon table
     public final static String SQL_CREATE_LEXICON_TABLE = "CREATE TABLE IF NOT EXISTS "+ LexiconTable.TABLE_NAME + " ("
@@ -64,19 +69,19 @@ public class DataSource extends SQLiteOpenHelper {
      * the class using the NEW operator; since this is a singleton class it will
      * be accessed with the getInstance(Context) function
      */
-     private  DataSource(Context context){
+    private  DataSource(Context context){
         super(context, DB_NAME, null, DBVersion);
-         this.context = context;
-         lexiconHashset = new ArrayList<>();
+        this.context = context;
+        lexiconHashset = new ArrayDeque<>(5);
 
-     }//Database() Ends
+    }//Database() Ends
 
 
     /***********************************************************************************
      *
      * @return
      */
-    public  ArrayList<Lexicon>  getLexicons() {
+    public  ArrayDeque<Lexicon>  getLexicons() {
         return lexiconHashset;
     }//getLexiconArrayList()
 
@@ -87,7 +92,7 @@ public class DataSource extends SQLiteOpenHelper {
      * change occur in the databases'  favorite table
      * @return
      */
-    public  ArrayList<Lexicon> getFavLexicon() {
+    public  ArrayDeque<Lexicon> getFavLexicon() {
 
         if(favLexiconHashset == null){
             favLexiconHashset = this.queryFavorites();
@@ -159,25 +164,47 @@ public class DataSource extends SQLiteOpenHelper {
         database.close();
     }//onUpgrade() Ends
 
+
+    /**********************************************************************************
+     * resetQueryIndex()
+     */
+     private void resetQueryIndex(){
+         queryIndex = 0;
+     }//if Ends
+
+
     /*******************************************************************************
      * This function inserts rows of lexicon data into the database
      */
-    public  ArrayList<Lexicon>  queryAll() {
+    public  ArrayDeque<Lexicon>  queryAll(boolean qDownWards, int nIncrement ) {
 
         // This database is only a cache for online data, so its upgrade policy is
         // to simply to discard the data and start over
         Lexicon lexicon = null;
-
+        Log.i("QUERRY_INDEX", queryIndex+"");
         SQLiteDatabase database = this.getReadableDatabase();
-
+        String select_stmt = "";
         //Query Statement
-        String select_stmt = "SELECT * FROM "+LexiconTable.TABLE_NAME;
+
+         if(qDownWards == false){
+            select_stmt = "SELECT * FROM "+LexiconTable.TABLE_NAME+ " WHERE "+LexiconTable.PRIMARY_KEY+" >= "+ (queryIndex-nIncrement) +" AND "+ LexiconTable.PRIMARY_KEY+" < "+ (queryIndex);
+            queryIndex-=nIncrement;
+        }else if(qDownWards == true){
+            select_stmt = "SELECT * FROM "+LexiconTable.TABLE_NAME+ " WHERE "+LexiconTable.PRIMARY_KEY+" >= "+ queryIndex +" AND "+ LexiconTable.PRIMARY_KEY+" < "+ (queryIndex+nIncrement);
+            queryIndex+=nIncrement;
+
+        }else {
+            return null;
+         }
+
+
 
         Cursor cursor = database.rawQuery(select_stmt, null);
 
         if (cursor.moveToFirst()){
 
             do{
+
                 lexicon = new Lexicon();
 
                 lexicon.setKejomWord(cursor.getString(cursor.getColumnIndex(LexiconTable.KEJOM_WORD)));
@@ -185,44 +212,98 @@ public class DataSource extends SQLiteOpenHelper {
                 lexicon.setPartOfSpeech(cursor.getString(cursor.getColumnIndex(LexiconTable.PART_OF_SPEECH)));
                 lexicon.setPluralForm(cursor.getString(cursor.getColumnIndex(LexiconTable.PLURAL)));
                 lexicon.setPronunciation(cursor.getString(cursor.getColumnIndex(LexiconTable.PRONUNCIATION)));
-               // lexicon.setVariant(cursor.getString(cursor.getColumnIndex(LexiconTable.VARIANT)));
+                // lexicon.setVariant(cursor.getString(cursor.getColumnIndex(LexiconTable.VARIANT)));
                 lexicon.setLexiconId(cursor.getInt(cursor.getColumnIndex(LexiconTable.PRIMARY_KEY)));
 
-                lexiconHashset.add(lexicon );
-
+                lexiconHashset.addLast(lexicon);
             }while (cursor.moveToNext());
             database.close();
 
             return lexiconHashset;
-
         }
 
         return  null;
 
     }//onUpgrade() Ends
 
+
+
+    /*******************************************************************************
+     * This function inserts rows of lexicon data into the database
+     */
+    public  ArrayDeque<Lexicon> queryAll(int from ,int to) {
+
+        // This database is only a cache for online data, so its upgrade policy is
+        // to simply to discard the data and start over
+        Lexicon lexicon = null;
+
+        SQLiteDatabase database = this.getReadableDatabase();
+
+
+        String select_stmt = "SELECT * FROM "+LexiconTable.TABLE_NAME+ " WHERE "+LexiconTable.PRIMARY_KEY+" >= "+ from +" AND "+ LexiconTable.PRIMARY_KEY+" <= "+ to;
+
+        //update query index
+        DataSource.queryIndex = to;
+
+        Cursor cursor = database.rawQuery(select_stmt, null);
+
+        if (cursor.moveToFirst()){
+
+            do{
+
+                lexicon = new Lexicon();
+
+                lexicon.setKejomWord(cursor.getString(cursor.getColumnIndex(LexiconTable.KEJOM_WORD)));
+                lexicon.setEnglishWord(cursor.getString(cursor.getColumnIndex(LexiconTable.ENGLISH_WORD)));
+                lexicon.setPartOfSpeech(cursor.getString(cursor.getColumnIndex(LexiconTable.PART_OF_SPEECH)));
+                lexicon.setPluralForm(cursor.getString(cursor.getColumnIndex(LexiconTable.PLURAL)));
+                lexicon.setPronunciation(cursor.getString(cursor.getColumnIndex(LexiconTable.PRONUNCIATION)));
+                // lexicon.setVariant(cursor.getString(cursor.getColumnIndex(LexiconTable.VARIANT)));
+                lexicon.setLexiconId(cursor.getInt(cursor.getColumnIndex(LexiconTable.PRIMARY_KEY)));
+
+                lexiconHashset.addLast(lexicon);
+            }while (cursor.moveToNext());
+            database.close();
+
+            return lexiconHashset;
+        }
+
+        return  null;
+
+    }//onUpgrade() Ends
+
+
+
+    /*********************************************************************************
+     * Function to clear all elements from the lexicon
+     */
+      public void clearDataSource(){
+          lexiconHashset.clear();
+          resetQueryIndex();
+      }//clear ends
+
     /*******************************************************************************
      * queryAll(String, boolean) an overloaded function
      * This function inserts rows of lexicon data into the database
      */
-    public   ArrayList<Lexicon>  queryAll(String keyword ) {
+    public   LinkedList<Lexicon>  queryAll(String keyword ) {
 
         keyword = keyword.toLowerCase();
 
         Toast.makeText(context, "Searching: "+keyword, Toast.LENGTH_SHORT).show();
         // This database is only a cache for online data, so its upgrade policy is
         // to simply to discard the data and start over
-        ArrayList<Lexicon>  lexiconHashset =  new ArrayList<Lexicon>();
+        LinkedList<Lexicon>  lexiconHashset =  new LinkedList<Lexicon>();
         Lexicon lexicon = null;
 
         SQLiteDatabase database = this.getReadableDatabase();
 
         //Query Statement
-        String select_stmt = "SELECT * FROM "+LexiconTable.TABLE_NAME +" WHERE " + LexiconTable.ENGLISH_WORD+ "  LIKE '_"+ keyword +"_%'";
+        String select_stmt = "SELECT * FROM "+LexiconTable.TABLE_NAME +" WHERE " + LexiconTable.ENGLISH_WORD+ "  LIKE '%"+ keyword +"%'";
 
         Cursor cursor = database.rawQuery(select_stmt, null);
 
-       if (cursor.moveToFirst()){
+        if (cursor.moveToFirst()){
 
             do{
                 lexicon = new Lexicon();
@@ -241,8 +322,8 @@ public class DataSource extends SQLiteOpenHelper {
 
             }while (cursor.moveToNext());
 
-           Log.i("SEARCH_SIZE"," ["+lexiconHashset.size()+"]" );
-
+            Log.i("SEARCH_SIZE"," ["+lexiconHashset.size()+"]" );
+            cursor.close();
             database.close();
 
             return lexiconHashset;
@@ -255,19 +336,20 @@ public class DataSource extends SQLiteOpenHelper {
     /***********************************************************************
      * TODO: Makes sure favorite Lexicon does not already exist in the data base
      */
-    public ArrayList insertFavorite(int lexiconId){
+    public ArrayDeque<Lexicon> insertFavorite(int lexiconId){
 
         SQLiteDatabase db = this.getWritableDatabase();
 
         String insert_stmt = "INSERT INTO "+ FavoriteTable.TABLE_NAME +
-                    " ( "+FavoriteTable.FORIEGN_KEY+ ")  VALUES "+
-                     "( "+lexiconId + " )";
-
+                " ( "+FavoriteTable.FORIEGN_KEY+ ")  VALUES "+
+                "( "+lexiconId + " )";
+        Log.i("FAVORITE_INSERT", ""+lexiconId);
         db.execSQL(insert_stmt);
 
         //Do a fresh query
         favLexiconHashset = this.queryFavorites();
 
+        Log.i("FAVORITE EVENT", "Inserting int favorite"+ favLexiconHashset);
         db.close();
 
         return favLexiconHashset;
@@ -277,14 +359,14 @@ public class DataSource extends SQLiteOpenHelper {
     /**********************************************************************************
      *
      */
-    public ArrayList removeFavorite(int lexiconId){
+    public ArrayDeque removeFavorite(int lexiconId){
 
         //open database connection
         SQLiteDatabase db = this.getWritableDatabase();
 
         String insert_stmt = "DELETE FROM "+ FavoriteTable.TABLE_NAME +
                 " WHERE "+FavoriteTable.FORIEGN_KEY + " = "+lexiconId;
-
+        Log.i("FAVORITE_REMOVE", ""+lexiconId);
         //execute sql statement
         db.execSQL(insert_stmt);
 
@@ -301,12 +383,12 @@ public class DataSource extends SQLiteOpenHelper {
     /**********************************************************************************
      * This function inserts rows of lexicon data into the database
      */
-    public  ArrayList<Lexicon> queryFavorites() {
+    public  ArrayDeque<Lexicon> queryFavorites() {
 
         // This database is only a cache for online data, so its upgrade policy is
         // to simply to discard the data and start over
 
-        ArrayList<Lexicon> favLeixons = new  ArrayList<Lexicon>();
+        ArrayDeque<Lexicon> favLeixons = new  ArrayDeque<Lexicon>();
         Lexicon lexicon = null;
 
         SQLiteDatabase database = this.getReadableDatabase();
@@ -316,23 +398,33 @@ public class DataSource extends SQLiteOpenHelper {
 
         Cursor cursor = database.rawQuery(select_stmt, null);
 
+        try {
 
-        if (cursor.moveToFirst()){
+           if (cursor.moveToFirst()) {
 
-            do{
+               do {
 
-                for (Lexicon lexi: lexiconHashset){
-                    if(lexi.getLexiconId() == cursor.getInt(cursor.getColumnIndex(FavoriteTable.FORIEGN_KEY ))){
-                        if(!favLeixons.contains(lexi)) {favLeixons.add(lexi );}
-                    }//if Ends
-                }
+                   for (Lexicon lexi : lexiconHashset) {
+                       if (lexi.getLexiconId() == cursor.getInt(cursor.getColumnIndex(FavoriteTable.FORIEGN_KEY))) {
+                           if (!favLeixons.contains(lexi)) {
+                               favLeixons.addLast(lexi);
+                           }
+                       }//if Ends
+                   }
 
+                   if(lexicon != null){
+                       Log.i("FAVORITE_QUERY", lexicon.getEnglishWord());
+                   }//if Ends
 
+               } while (cursor.moveToNext());
+               cursor.close();
+               return favLeixons;
+           }//if Ends
+       /*}catch (Exception ex){*/
 
-            }while (cursor.moveToNext());
-
-            return favLeixons;
-        }//if Ends
+       }finally {
+           cursor.close();
+       }//try-catch finally ends
 
         return  null;
 
@@ -342,21 +434,21 @@ public class DataSource extends SQLiteOpenHelper {
     /***********************************************************************************************
      * TODO: Better still perform a direct query from the database
      */
-     public  boolean isFavorite(Lexicon lexicon){
+    public  boolean isFavorite(Lexicon lexicon){
 
-         //do a fresh query to update favLexiconHashset
-         favLexiconHashset = this.queryFavorites();
+        //do a fresh query to update favLexiconHashset
+        favLexiconHashset = this.queryFavorites();
 
-         if(favLexiconHashset == null || lexicon == null) return  false;
+        if(favLexiconHashset == null || lexicon == null) return  false;
 
-         for (Lexicon favLexicon : favLexiconHashset ){
+        for (Lexicon favLexicon : favLexiconHashset ){
 
-             if(lexicon.getLexiconId() == favLexicon.getLexiconId()){
-                 return  true;
-             }//if Ends
-         }//for Ends
-         return false;
-     }//isFavorite() Ends
+            if(lexicon.getLexiconId() == favLexicon.getLexiconId()){
+                return  true;
+            }//if Ends
+        }//for Ends
+        return false;
+    }//isFavorite() Ends
 
 
 
@@ -408,7 +500,6 @@ public class DataSource extends SQLiteOpenHelper {
         charAtIndex = lineOfData.charAt(index);
 
         //System.out.println(charAtIndex + " Phonetics:"+ variantPluralPartOfSpeech[1]);
-
         String lexiconData ="";
         boolean hasPlural = false;
         boolean hasVariant = false;
@@ -479,7 +570,7 @@ public class DataSource extends SQLiteOpenHelper {
             charAtIndex = lineOfData.charAt(index);
         }//while Ends
 
-       // System.out.println(""+variantPluralPartOfSpeech[5]);
+        // System.out.println(""+variantPluralPartOfSpeech[5]);
         if(variantPluralPartOfSpeech[5].length() < 1){
             System.out.println(charAtIndex + " Part of Speech:"+ variantPluralPartOfSpeech[4]);
             System.err.println("Exception: No english word Captured for "+variantPluralPartOfSpeech[0]);
@@ -503,48 +594,50 @@ public class DataSource extends SQLiteOpenHelper {
     public  void transferFileDataToSqlite (){
 
         //Querry to check if data is in database; if there is no data inser data into database table
-        if(queryAll() != null){
+        if(context.getApplicationContext().getDatabasePath(DB_NAME).exists() == true){
+            Log.i("SQLITE:","Alrefady Exist");
 
-            Log.i("SQLITE:","Already Exist");
-
-            if(DataSource.lexiconHashset.size() > 0){
-                Log.i("SQLITE:","Already Exist");
+            if(queryAll(0, 20) != null){
                 return;
-            }//if Ends
-        }//if Ends
-
-        Toast.makeText(context, "INSERTING INTO DATA BASE ", Toast.LENGTH_SHORT);
-        InputStream inputStream = null;
-
-        String path = context.getPackageResourcePath()+"/raw/kejom_english.txt";
-
-        // inputStream = this.getApplicationContext().getAssets().open("../res/raw/kejom_english.txt");
-        inputStream = context.getResources().openRawResource(R.raw.kejom_english);
-
-        try {
-            inputStream = context.getApplicationContext().getAssets().open("../res/raw");
-        } catch (IOException e) {
-            e.printStackTrace();
+            }
         }
-        Scanner scanner = null;
-        try {
-            scanner = new Scanner(inputStream);
-            String lexiconId = "";
+            Toast.makeText(context, "INSERTING INTO DATA BASE ", Toast.LENGTH_SHORT);
+            InputStream inputStream = null;
 
-            while(scanner.hasNextLine()){
-                //Log.i("INSERTER: ", "Inserting lexicon");
-                Lexicon lexicon = extractLexiconTokens( scanner.nextLine() );
-                insert(lexicon);
-            }//while() Ends
+            String path = context.getPackageResourcePath() + "/raw/kejom_english.txt";
 
-        } //readData(String)
-        finally {
+            // inputStream = this.getApplicationContext().getAssets().open("../res/raw/kejom_english.txt");
+            inputStream = context.getResources().openRawResource(R.raw.kejom_english);
+
+           /* try {
+                //inputStream = context.getApplicationContext().getAssets().open("../res/raw");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }*/
+            Scanner scanner = null;
             try {
-                inputStream.close();
-                scanner.close();
-            } catch (IOException ex) {
-            }//catch() Ends
-        }//finally Ends
+                scanner = new Scanner(inputStream);
+                String lexiconId = "";
+
+                while (scanner.hasNextLine()) {
+                    //Log.i("INSERTER: ", "Inserting lexicon");
+                    Lexicon lexicon = extractLexiconTokens(scanner.nextLine());
+
+                    if(lexicon.getEnglishWord().charAt(0) == '.'){
+                        lexicon.setEnglishWord( lexicon.getEnglishWord().substring(1));
+                    }//if Ends
+
+                    insert(lexicon);
+                }//while() Ends
+
+            } //readData(String)
+            finally {
+                try {
+                    inputStream.close();
+                    scanner.close();
+                } catch (IOException ex) {
+                }//catch() Ends
+            }//finally Ends
 
     }//readData(String Filename) Ends
 
@@ -553,7 +646,7 @@ public class DataSource extends SQLiteOpenHelper {
     /**************************************************************************************
      *
      */
-     public static class LexiconTable{
+    public static class LexiconTable{
 
         public static String TABLE_NAME = "lexicon";
         public static String KEJOM_WORD = "kejomWord";
